@@ -11,10 +11,9 @@ def compute_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-# Website ki Setting
+# Website ki Setting (Poori tarah se Stealth)
 st.set_page_config(page_title="Smart Money", page_icon="🎯", layout="wide")
-st.title("🎯 Smart Money (Stealth Accumulation) Scanner")
-st.markdown("**Logic:** RSI < 40 + Stealth Buying / Absorption near Support")
+st.title("🎯 Smart Money")
 
 if st.button("Run Scan 🚀"):
     file_path = "Trading_Symbols_Chartink.txt"
@@ -27,7 +26,7 @@ if st.button("Run Scan 🚀"):
         st.error("Trading_Symbols_Chartink.txt file nahi mili. Kripya GitHub par check karein.")
 
     if stocks:
-        with st.spinner("Scanning 592 stocks for RSI < 40 & Stealth Accumulation..."):
+        with st.spinner("Processing list... please wait."):
             results = []
             progress_bar = st.progress(0)
             
@@ -35,7 +34,6 @@ if st.button("Run Scan 🚀"):
                 progress_bar.progress((i + 1) / len(stocks))
                 
                 try:
-                    # 120 din ka data chahiye taki RSI aur Average Volume sahi aaye
                     data = yf.download(stock, period="120d", progress=False)
                     if isinstance(data.columns, pd.MultiIndex):
                         data.columns = data.columns.get_level_values(0)
@@ -44,12 +42,13 @@ if st.button("Run Scan 🚀"):
                         data['RSI'] = compute_rsi(data['Close'], 14)
                         latest_rsi = float(data['RSI'].iloc[-1])
                         
-                        # Filter 1: Sirf woh stocks jo oversold (RSI < 40) zone mein ja rahe hain
-                        if latest_rsi <= 40:
+                        # Filter 1: RSI 35 ya usse niche
+                        if latest_rsi <= 35:
                             data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                             last_7_days = data.tail(7)
                             
                             accumulation_found = False
+                            entry_date = ""
                             
                             # Filter 2: Stealth Accumulation Check karna
                             for date, row in last_7_days.iterrows():
@@ -62,9 +61,10 @@ if st.button("Run Scan 🚀"):
                                 lower_wick = min(open_p, close_p) - low_p
                                 total_range = high_p - low_p
                                 
-                                # Absorption Logic: Price niche gaya par niche ki wick body se badi hai (Buying pressure)
+                                # Absorption Logic: Price niche gaya par niche ki wick body se badi hai
                                 if total_range > 0 and lower_wick > body and (lower_wick / total_range) >= 0.4:
                                     accumulation_found = True
+                                    entry_date = date.strftime("%d %b %Y") # Date nikalna
                                     break
                             
                             if accumulation_found:
@@ -74,9 +74,9 @@ if st.button("Run Scan 🚀"):
                                 
                                 results.append({
                                     "Stock": symbol_clean,
+                                    "Entry Date": entry_date,
                                     "Current Price": round(current_close, 2),
                                     "RSI": round(latest_rsi, 2),
-                                    "Setup": "Absorption 🟢",
                                     "Open in TradingView": tv_link
                                 })
                 except Exception as e:
@@ -98,4 +98,4 @@ if st.button("Run Scan 🚀"):
                     hide_index=True
                 )
             else:
-                st.info("Pichle 7 dino mein aapki list mein kisi stock mein Stealth Accumulation aur RSI < 40 ka setup nahi mila.")
+                st.info("No records found.")
