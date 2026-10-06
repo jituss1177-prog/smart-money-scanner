@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import datetime
 
-# Custom RSI formula
+# Custom RSI formula (Hidden Logic)
 def compute_rsi(series, period=14):
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).ewm(alpha=1/period, adjust=False).mean()
@@ -11,24 +11,22 @@ def compute_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-# Website ki Setting
-st.set_page_config(page_title="Smart Money Scanner", page_icon="🎯", layout="wide")
-st.title("🎯 Brahmaastra Smart Money Scanner")
+# Website ki Setting - Minimal
+st.set_page_config(page_title="smart m", layout="wide")
+st.title("smart m")
 
-# Tab Layout Banaya (2 alag-alag features ke liye)
-tab1, tab2 = st.tabs(["🚀 Auto Scanner (Support & Volume)", "🕵️‍♂ Stock X-Ray (Specific Stock Check)"])
+# Tabs ke naam simple kar diye gaye
+tab1, tab2 = st.tabs(["List 1", "List 2"])
 
-# ----------------- TAB 1: AUTO SCANNER -----------------
+# ----------------- TAB 1: AUTO SCANNER (Stealth) -----------------
 with tab1:
-    st.markdown("**System Status:** Active & Ready to Scan Premium Setups...")
-    
     stocks = [
         "RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "TCS.NS", 
         "NATIONALUM.NS", "TATAINVEST.NS", "SBIN.NS", "TATASTEEL.NS", "ITC.NS"
     ]
     
-    if st.button("Scan Market Now 🚀"):
-        with st.spinner("Scanning markets for Smart Money footprints... Please wait."):
+    if st.button("Run"):
+        with st.spinner("..."):
             found_stocks = []
             
             for stock in stocks:
@@ -57,36 +55,31 @@ with tab1:
                     
                     if is_near_support and is_high_volume and is_rsi_oversold:
                         found_stocks.append({
-                            "Stock": stock.replace(".NS", ""),
-                            "Price (₹)": round(current_close, 2),
-                            "Support (₹)": round(support_level, 2),
-                            "RSI": round(current_rsi, 2),
-                            "Volume Spike": f"{round(current_vol / avg_vol, 1)}x"
+                            "Sym": stock.replace(".NS", ""),
+                            "P": round(current_close, 2),
+                            "S": round(support_level, 2),
+                            "R": round(current_rsi, 2),
+                            "V": f"{round(current_vol / avg_vol, 1)}x"
                         })
                 except Exception as e:
                     pass
             
             if len(found_stocks) > 0:
-                st.success("✅ Smart Money Footprints Found at Support!")
                 st.dataframe(pd.DataFrame(found_stocks), use_container_width=True)
             else:
-                st.warning("Koi stock aaj in 4 strict conditions ko pass nahi kar paya. Capital safe rakhein!")
+                st.write("0")
 
-# ----------------- TAB 2: STOCK X-RAY (7 DAYS FEATURE) -----------------
+# ----------------- TAB 2: SPECIFIC CHECK (Stealth) -----------------
 with tab2:
-    st.markdown("**Check if Smart Money bought your stock in the last 7 days:**")
+    # Koi bhi text ya hint nahi, sirf khali box
+    user_input = st.text_input("", "")
     
-    # Yahan default value empty ("") kar di gayi hai
-    user_input = st.text_input("Stock ka naam likhein (e.g. RELIANCE.NS ya SBIN.NS)", "")
-    
-    if st.button("Check History 🕵️‍♂"):
-        # Check agar box khali chhod kar button daba diya ho
+    if st.button("Check"):
         if user_input.strip() == "":
-            st.warning("⚠️ Pehle kisi stock ka naam likhein!")
+            st.warning("!")
         else:
-            with st.spinner(f"Analyzing last 7 days data for {user_input}..."):
+            with st.spinner("..."):
                 try:
-                    # Agar user .NS lagana bhool jaye toh auto add karein
                     stock_name = user_input.strip().upper()
                     if not stock_name.endswith(".NS"):
                         stock_name += ".NS"
@@ -98,7 +91,6 @@ with tab2:
                     if len(data) >= 20:
                         data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                         
-                        # Pichle 7 din ka data uthayein
                         last_7_days = data.tail(7)
                         
                         smart_money_activity = []
@@ -109,24 +101,23 @@ with tab2:
                             vol = float(row['Volume'])
                             avg_vol = float(row['Avg_Vol_20'])
                             
-                            # Logic: Green Candle (Close > Open) + High Volume (1.5x se zyada)
                             is_green_candle = close_p > open_p
                             vol_spike_ratio = vol / avg_vol if avg_vol > 0 else 0
                             
                             if is_green_candle and vol_spike_ratio >= 1.5:
                                 smart_money_activity.append({
-                                    "Date": date.strftime("%d %b %Y"),
-                                    "Price Closed at (₹)": round(close_p, 2),
-                                    "Action": "Heavy Buying 🟢",
-                                    "Volume Spike": f"{round(vol_spike_ratio, 1)}x High"
+                                    "D": date.strftime("%d %b"),
+                                    "P": round(close_p, 2),
+                                    "A": "B",
+                                    "V": f"{round(vol_spike_ratio, 1)}x"
                                 })
                                 
                         if len(smart_money_activity) > 0:
-                            st.success(f"🔥 ALERT: {stock_name.replace('.NS', '')} mein pichle 7 dino mein Bade Khiladiyon ki ENTRY pakdi gayi hai!")
+                            st.success("✅")
                             st.dataframe(pd.DataFrame(smart_money_activity), use_container_width=True)
                         else:
-                            st.info(f"💤 {stock_name.replace('.NS', '')} mein pichle 7 dino mein koi achanak badi buying ya heavy volume spike nahi mila.")
+                            st.info("0")
                     else:
-                        st.error("Data nahi mila. Kripya stock ka sahi naam check karein.")
+                        st.error("X")
                 except Exception as e:
-                    st.error("Kuch technical error aaya, kripya stock ka naam sahi likhein ya thodi der baad try karein.")
+                    st.error("X")
