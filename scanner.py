@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import datetime
+import os
 
 # Custom RSI formula (Hidden Logic)
 def compute_rsi(series, period=14):
@@ -15,21 +15,32 @@ def compute_rsi(series, period=14):
 st.set_page_config(page_title="smart m", layout="wide")
 st.title("smart m")
 
-# Tabs ke naam simple kar diye gaye
 tab1, tab2 = st.tabs(["List 1", "List 2"])
 
-# ----------------- TAB 1: AUTO SCANNER (Stealth) -----------------
+# ----------------- TAB 1: AUTO SCANNER (Stealth with TXT File) -----------------
 with tab1:
-    stocks = [
-        "RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "TCS.NS", 
-        "NATIONALUM.NS", "TATAINVEST.NS", "SBIN.NS", "TATASTEEL.NS", "ITC.NS"
-    ]
-    
     if st.button("Run"):
+        # Upload ki hui txt file se stocks uthana
+        file_path = "Trading_Symbols_Chartink.txt"
+        stocks = []
+        
+        if os.path.exists(file_path):
+            with open(file_path, "r") as f:
+                # File ke har naam ke aage .NS lagana
+                stocks = [line.strip() + ".NS" for line in f.readlines() if line.strip()]
+        else:
+            stocks = ["RELIANCE.NS"] # Fallback
+
         with st.spinner("..."):
             found_stocks = []
             
-            for stock in stocks:
+            # Loading Bar Setup
+            progress_bar = st.progress(0)
+            
+            for i, stock in enumerate(stocks):
+                # Progress bar update karna (chupke se)
+                progress_bar.progress((i + 1) / len(stocks))
+                
                 try:
                     data = yf.download(stock, period="120d", progress=False)
                     if isinstance(data.columns, pd.MultiIndex):
@@ -64,6 +75,8 @@ with tab1:
                 except Exception as e:
                     pass
             
+            progress_bar.empty() # Kaam hone ke baad bar gayab
+
             if len(found_stocks) > 0:
                 st.dataframe(pd.DataFrame(found_stocks), use_container_width=True)
             else:
@@ -71,7 +84,6 @@ with tab1:
 
 # ----------------- TAB 2: SPECIFIC CHECK (Stealth) -----------------
 with tab2:
-    # Koi bhi text ya hint nahi, sirf khali box
     user_input = st.text_input("", "")
     
     if st.button("Check"):
