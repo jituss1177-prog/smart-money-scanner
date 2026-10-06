@@ -3,12 +3,12 @@ import yfinance as yf
 import pandas as pd
 import os
 
-# Website ki Setting - Minimal & Stealth
-st.set_page_config(page_title="smart m", layout="wide")
-st.title("smart m")
+# Website ki Setting - Naya Title aur Icon
+st.set_page_config(page_title="Smart Money", page_icon="🎯", layout="wide")
+st.title("🎯 Smart Money Scanner")
 
 # Ek hi button mein poora system
-if st.button("Run Scan"):
+if st.button("Run Scan 🚀"):
     file_path = "Trading_Symbols_Chartink.txt"
     stocks = []
     
