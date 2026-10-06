@@ -3,109 +3,42 @@ import yfinance as yf
 import pandas as pd
 import os
 
-# Custom RSI formula (Hidden Logic)
-def compute_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).ewm(alpha=1/period, adjust=False).mean()
-    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/period, adjust=False).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-# Website ki Setting - Minimal
+# Website ki Setting - Minimal & Stealth
 st.set_page_config(page_title="smart m", layout="wide")
 st.title("smart m")
 
-tab1, tab2 = st.tabs(["List 1", "List 2"])
+# Ek hi button mein poora system
+if st.button("Run Scan"):
+    file_path = "Trading_Symbols_Chartink.txt"
+    stocks = []
+    
+    # Text file se stocks load karna
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            stocks = [line.strip() + ".NS" for line in f.readlines() if line.strip()]
+    else:
+        st.error("Trading_Symbols_Chartink.txt file nahi mili. Kripya GitHub par check karein.")
 
-# ----------------- TAB 1: AUTO SCANNER (Stealth with TXT File) -----------------
-with tab1:
-    if st.button("Run"):
-        # Upload ki hui txt file se stocks uthana
-        file_path = "Trading_Symbols_Chartink.txt"
-        stocks = []
-        
-        if os.path.exists(file_path):
-            with open(file_path, "r") as f:
-                # File ke har naam ke aage .NS lagana
-                stocks = [line.strip() + ".NS" for line in f.readlines() if line.strip()]
-        else:
-            stocks = ["RELIANCE.NS"] # Fallback
-
-        with st.spinner("..."):
-            found_stocks = []
+    if stocks:
+        with st.spinner("Processing list... please wait (takes 1-2 minutes for 600 stocks)"):
+            results = []
             
-            # Loading Bar Setup
+            # Loading Bar
             progress_bar = st.progress(0)
             
             for i, stock in enumerate(stocks):
-                # Progress bar update karna (chupke se)
                 progress_bar.progress((i + 1) / len(stocks))
                 
                 try:
-                    data = yf.download(stock, period="120d", progress=False)
-                    if isinstance(data.columns, pd.MultiIndex):
-                        data.columns = data.columns.get_level_values(0)
-                        
-                    if len(data) < 90:
-                        continue
-                        
-                    data['90D_Low'] = data['Low'].rolling(window=90).min()
-                    data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
-                    data['RSI'] = compute_rsi(data['Close'], 14)
-                    
-                    latest = data.iloc[-1]
-                    current_close = float(latest['Close'])
-                    support_level = float(latest['90D_Low'])
-                    current_vol = float(latest['Volume'])
-                    avg_vol = float(latest['Avg_Vol_20'])
-                    current_rsi = float(latest['RSI'])
-                    
-                    is_near_support = current_close <= (support_level * 1.03)
-                    is_high_volume = current_vol >= (avg_vol * 2.5)
-                    is_rsi_oversold = current_rsi <= 40
-                    
-                    if is_near_support and is_high_volume and is_rsi_oversold:
-                        found_stocks.append({
-                            "Sym": stock.replace(".NS", ""),
-                            "P": round(current_close, 2),
-                            "S": round(support_level, 2),
-                            "R": round(current_rsi, 2),
-                            "V": f"{round(current_vol / avg_vol, 1)}x"
-                        })
-                except Exception as e:
-                    pass
-            
-            progress_bar.empty() # Kaam hone ke baad bar gayab
-
-            if len(found_stocks) > 0:
-                st.dataframe(pd.DataFrame(found_stocks), use_container_width=True)
-            else:
-                st.write("0")
-
-# ----------------- TAB 2: SPECIFIC CHECK (Stealth) -----------------
-with tab2:
-    user_input = st.text_input("", "")
-    
-    if st.button("Check"):
-        if user_input.strip() == "":
-            st.warning("!")
-        else:
-            with st.spinner("..."):
-                try:
-                    stock_name = user_input.strip().upper()
-                    if not stock_name.endswith(".NS"):
-                        stock_name += ".NS"
-                        
-                    data = yf.download(stock_name, period="30d", progress=False)
+                    data = yf.download(stock, period="30d", progress=False)
                     if isinstance(data.columns, pd.MultiIndex):
                         data.columns = data.columns.get_level_values(0)
                         
                     if len(data) >= 20:
                         data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                         
+                        # Pichle 7 din ka data check karna
                         last_7_days = data.tail(7)
-                        
-                        smart_money_activity = []
                         
                         for date, row in last_7_days.iterrows():
                             open_p = float(row['Open'])
@@ -113,23 +46,40 @@ with tab2:
                             vol = float(row['Volume'])
                             avg_vol = float(row['Avg_Vol_20'])
                             
-                            is_green_candle = close_p > open_p
-                            vol_spike_ratio = vol / avg_vol if avg_vol > 0 else 0
+                            # Logic: Green Candle + High Volume
+                            is_green = close_p > open_p
+                            vol_spike = vol / avg_vol if avg_vol > 0 else 0
                             
-                            if is_green_candle and vol_spike_ratio >= 1.5:
-                                smart_money_activity.append({
-                                    "D": date.strftime("%d %b"),
-                                    "P": round(close_p, 2),
-                                    "A": "B",
-                                    "V": f"{round(vol_spike_ratio, 1)}x"
-                                })
+                            if is_green and vol_spike >= 1.5:
+                                symbol_clean = stock.replace(".NS", "")
+                                # TradingView URL format
+                                tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{symbol_clean}"
                                 
-                        if len(smart_money_activity) > 0:
-                            st.success("✅")
-                            st.dataframe(pd.DataFrame(smart_money_activity), use_container_width=True)
-                        else:
-                            st.info("0")
-                    else:
-                        st.error("X")
+                                results.append({
+                                    "Stock": symbol_clean,
+                                    "Date": date.strftime("%d %b %Y"),
+                                    "Volume Spike": f"{round(vol_spike, 1)}x",
+                                    "Current Price": round(close_p, 2),
+                                    "Open in TradingView": tv_link
+                                })
                 except Exception as e:
-                    st.error("X")
+                    pass
+            
+            progress_bar.empty()
+
+            if len(results) > 0:
+                df = pd.DataFrame(results)
+                
+                # TradingView link ko clickable banane ke liye Streamlit column config
+                st.dataframe(
+                    df,
+                    column_config={
+                        "Open in TradingView": st.column_config.LinkColumn(
+                            "Open in TradingView", display_text="View Chart 📈"
+                        )
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("Pichle 7 dino mein in stocks mein koi entry nahi mili.")
