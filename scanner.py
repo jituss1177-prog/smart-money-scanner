@@ -72,56 +72,8 @@ with tab1:
             else:
                 st.warning("Koi stock aaj in 4 strict conditions ko pass nahi kar paya. Capital safe rakhein!")
 
-# ----------------- TAB 2: STOCK X-RAY (NEW FEATURE) -----------------
+# ----------------- TAB 2: STOCK X-RAY (7 DAYS FEATURE) -----------------
 with tab2:
-    st.markdown("**Check if Smart Money bought your stock in the last 4 days:**")
+    st.markdown("**Check if Smart Money bought your stock in the last 7 days:**")
     
-    user_input = st.text_input("Stock ka naam likhein (e.g. RELIANCE.NS ya SBIN.NS)", "RELIANCE.NS")
-    
-    if st.button("Check History 🕵️‍♂️"):
-        with st.spinner(f"Analyzing last 4 days data for {user_input}..."):
-            try:
-                # Agar user .NS lagana bhool jaye toh auto add karein
-                stock_name = user_input.strip().upper()
-                if not stock_name.endswith(".NS"):
-                    stock_name += ".NS"
-                    
-                data = yf.download(stock_name, period="30d", progress=False)
-                if isinstance(data.columns, pd.MultiIndex):
-                    data.columns = data.columns.get_level_values(0)
-                    
-                if len(data) >= 20:
-                    data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
-                    
-                    # Pichle 4 din ka data uthayein
-                    last_4_days = data.tail(4)
-                    
-                    smart_money_activity = []
-                    
-                    for date, row in last_4_days.iterrows():
-                        open_p = float(row['Open'])
-                        close_p = float(row['Close'])
-                        vol = float(row['Volume'])
-                        avg_vol = float(row['Avg_Vol_20'])
-                        
-                        # Logic: Green Candle (Close > Open) + High Volume (1.5x se zyada)
-                        is_green_candle = close_p > open_p
-                        vol_spike_ratio = vol / avg_vol if avg_vol > 0 else 0
-                        
-                        if is_green_candle and vol_spike_ratio >= 1.5:
-                            smart_money_activity.append({
-                                "Date": date.strftime("%d %b %Y"),
-                                "Price Closed at (₹)": round(close_p, 2),
-                                "Action": "Heavy Buying 🟢",
-                                "Volume Spike": f"{round(vol_spike_ratio, 1)}x High"
-                            })
-                            
-                    if len(smart_money_activity) > 0:
-                        st.success(f"🔥 ALERT: {stock_name.replace('.NS', '')} mein pichle 4 dino mein Bade Khiladiyon ki ENTRY pakdi gayi hai!")
-                        st.dataframe(pd.DataFrame(smart_money_activity), use_container_width=True)
-                    else:
-                        st.info(f"💤 {stock_name.replace('.NS', '')} mein pichle 4 dino mein koi achanak badi buying ya heavy volume spike nahi mila.")
-                else:
-                    st.error("Data nahi mila. Kripya stock ka sahi naam check karein.")
-            except Exception as e:
-                st.error("Kuch technical error aaya, kripya thodi der baad try karein.")
+    user_input = st.text_input("Stock ka naam likhein (e.g. RELIANCE.NS ya SBIN.NS
