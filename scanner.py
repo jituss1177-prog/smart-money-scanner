@@ -3,16 +3,23 @@ import yfinance as yf
 import pandas as pd
 import os
 
-# Website ki Setting - Naya Title aur Icon
-st.set_page_config(page_title="Smart Money", page_icon="🎯", layout="wide")
-st.title("🎯 Smart Money Scanner")
+# Custom RSI formula
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
 
-# Ek hi button mein poora system
+# Website ki Setting
+st.set_page_config(page_title="Smart Money", page_icon="🎯", layout="wide")
+st.title("🎯 Smart Money (Stealth Accumulation) Scanner")
+st.markdown("**Logic:** RSI < 40 + Stealth Buying / Absorption near Support")
+
 if st.button("Run Scan 🚀"):
     file_path = "Trading_Symbols_Chartink.txt"
     stocks = []
     
-    # Text file se stocks load karna
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             stocks = [line.strip() + ".NS" for line in f.readlines() if line.strip()]
@@ -20,66 +27,36 @@ if st.button("Run Scan 🚀"):
         st.error("Trading_Symbols_Chartink.txt file nahi mili. Kripya GitHub par check karein.")
 
     if stocks:
-        with st.spinner("Processing list... please wait (takes 1-2 minutes for 600 stocks)"):
+        with st.spinner("Scanning 592 stocks for RSI < 40 & Stealth Accumulation..."):
             results = []
-            
-            # Loading Bar
             progress_bar = st.progress(0)
             
             for i, stock in enumerate(stocks):
                 progress_bar.progress((i + 1) / len(stocks))
                 
                 try:
-                    data = yf.download(stock, period="30d", progress=False)
+                    # 120 din ka data chahiye taki RSI aur Average Volume sahi aaye
+                    data = yf.download(stock, period="120d", progress=False)
                     if isinstance(data.columns, pd.MultiIndex):
                         data.columns = data.columns.get_level_values(0)
                         
-                    if len(data) >= 20:
-                        data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
+                    if len(data) >= 90:
+                        data['RSI'] = compute_rsi(data['Close'], 14)
+                        latest_rsi = float(data['RSI'].iloc[-1])
                         
-                        # Pichle 7 din ka data check karna
-                        last_7_days = data.tail(7)
-                        
-                        for date, row in last_7_days.iterrows():
-                            open_p = float(row['Open'])
-                            close_p = float(row['Close'])
-                            vol = float(row['Volume'])
-                            avg_vol = float(row['Avg_Vol_20'])
+                        # Filter 1: Sirf woh stocks jo oversold (RSI < 40) zone mein ja rahe hain
+                        if latest_rsi <= 40:
+                            data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
+                            last_7_days = data.tail(7)
                             
-                            # Logic: Green Candle + High Volume
-                            is_green = close_p > open_p
-                            vol_spike = vol / avg_vol if avg_vol > 0 else 0
+                            accumulation_found = False
                             
-                            if is_green and vol_spike >= 1.5:
-                                symbol_clean = stock.replace(".NS", "")
-                                # TradingView URL format
-                                tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{symbol_clean}"
+                            # Filter 2: Stealth Accumulation Check karna
+                            for date, row in last_7_days.iterrows():
+                                open_p = float(row['Open'])
+                                close_p = float(row['Close'])
+                                high_p = float(row['High'])
+                                low_p = float(row['Low'])
                                 
-                                results.append({
-                                    "Stock": symbol_clean,
-                                    "Date": date.strftime("%d %b %Y"),
-                                    "Volume Spike": f"{round(vol_spike, 1)}x",
-                                    "Current Price": round(close_p, 2),
-                                    "Open in TradingView": tv_link
-                                })
-                except Exception as e:
-                    pass
-            
-            progress_bar.empty()
-
-            if len(results) > 0:
-                df = pd.DataFrame(results)
-                
-                # TradingView link ko clickable banane ke liye Streamlit column config
-                st.dataframe(
-                    df,
-                    column_config={
-                        "Open in TradingView": st.column_config.LinkColumn(
-                            "Open in TradingView", display_text="View Chart 📈"
-                        )
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.info("Pichle 7 dino mein in stocks mein koi entry nahi mili.")
+                                body = abs(open_p - close_p)
+                                lower_wick = min(open_p, close_p)
