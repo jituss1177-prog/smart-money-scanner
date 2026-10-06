@@ -45,15 +45,16 @@ with tab1:
                             
                         if len(data) >= 90:
                             data['RSI'] = compute_rsi(data['Close'], 14)
-                            latest_rsi = float(data['RSI'].iloc[-1])
                             
-                            # Filter 1: RSI 35 ya usse niche
-                            if latest_rsi <= 35:
+                            # CHANGE: RSI Crossed Below 35 Logic
+                            latest_rsi = float(data['RSI'].iloc[-1])
+                            prev_rsi = float(data['RSI'].iloc[-2])
+                            
+                            # Filter 1: Kal RSI 35 ke upar tha, aur aaj 35 ya usse niche aaya hai (Fresh Cross)
+                            if prev_rsi > 35 and latest_rsi <= 35:
                                 data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                                 
-                                # CHANGE: Sirf pichle 5 din ka data check karna
                                 last_5_days = data.tail(5)
-                                
                                 accumulation_found = False
                                 entry_date = ""
                                 
@@ -104,7 +105,7 @@ with tab1:
                         hide_index=True
                     )
                 else:
-                    st.info("No records found in the last 5 days.")
+                    st.info("Koi fresh RSI < 35 breakdown aur recent accumulation nahi mili.")
 
 # ---------------- TAB 2: MANUAL CHECK (Last 5 Days) ----------------
 with tab2:
@@ -127,7 +128,6 @@ with tab2:
                     if len(data) >= 20:
                         data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                         
-                        # CHANGE: Pichle 15 din ki jagah sirf last 5 din
                         last_5_days = data.tail(5)
                         activity = []
                         
@@ -147,10 +147,8 @@ with tab2:
                             
                             setup = ""
                             
-                            # Check 1: Absorption (Wick badi ho)
                             if total_range > 0 and lower_wick > body and (lower_wick / total_range) >= 0.4:
                                 setup = "Absorption (Stealth) 🟢"
-                            # Check 2: Aggressive Buying (Volume jyada aur green candle)
                             elif is_green and vol_spike >= 1.5:
                                 setup = "Aggressive Buy 🚀"
                                 
