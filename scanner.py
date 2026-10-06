@@ -18,7 +18,7 @@ st.title("🎯 Smart Money")
 # 2 Tabs create kiye
 tab1, tab2 = st.tabs(["List Scan", "Manual Check"])
 
-# ---------------- TAB 1: AUTO SCANNER ----------------
+# ---------------- TAB 1: AUTO SCANNER (Last 5 Days) ----------------
 with tab1:
     if st.button("Run Scan 🚀"):
         file_path = "Trading_Symbols_Chartink.txt"
@@ -50,13 +50,15 @@ with tab1:
                             # Filter 1: RSI 35 ya usse niche
                             if latest_rsi <= 35:
                                 data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
-                                last_7_days = data.tail(7)
+                                
+                                # CHANGE: Sirf pichle 5 din ka data check karna
+                                last_5_days = data.tail(5)
                                 
                                 accumulation_found = False
                                 entry_date = ""
                                 
-                                # Filter 2: Stealth Accumulation (Absorption)
-                                for date, row in last_7_days.iterrows():
+                                # Filter 2: Stealth Accumulation (Absorption) in Last 5 Days
+                                for date, row in last_5_days.iterrows():
                                     open_p = float(row['Open'])
                                     close_p = float(row['Close'])
                                     high_p = float(row['High'])
@@ -66,6 +68,7 @@ with tab1:
                                     lower_wick = min(open_p, close_p) - low_p
                                     total_range = high_p - low_p
                                     
+                                    # Absorption Logic
                                     if total_range > 0 and lower_wick > body and (lower_wick / total_range) >= 0.4:
                                         accumulation_found = True
                                         entry_date = date.strftime("%d %b %Y")
@@ -101,9 +104,9 @@ with tab1:
                         hide_index=True
                     )
                 else:
-                    st.info("No records found.")
+                    st.info("No records found in the last 5 days.")
 
-# ---------------- TAB 2: MANUAL CHECK ----------------
+# ---------------- TAB 2: MANUAL CHECK (Last 5 Days) ----------------
 with tab2:
     user_input = st.text_input("Stock Name (e.g. INFY, HDFCBANK)", "")
     
@@ -117,18 +120,18 @@ with tab2:
                     if not stock_name.endswith(".NS"):
                         stock_name += ".NS"
                         
-                    data = yf.download(stock_name, period="60d", progress=False)
+                    data = yf.download(stock_name, period="30d", progress=False)
                     if isinstance(data.columns, pd.MultiIndex):
                         data.columns = data.columns.get_level_values(0)
                         
                     if len(data) >= 20:
                         data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                         
-                        # Pichle 15 din ka data check karna
-                        last_15_days = data.tail(15)
+                        # CHANGE: Pichle 15 din ki jagah sirf last 5 din
+                        last_5_days = data.tail(5)
                         activity = []
                         
-                        for date, row in last_15_days.iterrows():
+                        for date, row in last_5_days.iterrows():
                             open_p = float(row['Open'])
                             close_p = float(row['Close'])
                             high_p = float(row['High'])
@@ -163,7 +166,7 @@ with tab2:
                             st.success(f"Activity Found for {stock_name.replace('.NS', '')}")
                             st.dataframe(pd.DataFrame(activity), use_container_width=True, hide_index=True)
                         else:
-                            st.info(f"Pichle 15 dino mein koi special activity nahi mili.")
+                            st.info(f"Pichle 5 dino mein koi special activity nahi mili.")
                     else:
                         st.error("Data nahi mila. Sahi naam type karein.")
                 except Exception as e:
