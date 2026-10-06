@@ -1,42 +1,58 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 
-# Website ki setting
+# Custom RSI formula (ab koi alag library ki zarurat nahi)
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
+
+# Website ki Setting
 st.set_page_config(page_title="Smart Money Scanner", page_icon="🎯", layout="wide")
 
 st.title("🎯 Smart Money (90D Support) Scanner")
 st.markdown("**System Status:** Active & Ready to Scan...")
 
+# Aapke Stocks
 stocks = [
     "RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "TCS.NS", 
     "NATIONALUM.NS", "TATAINVEST.NS", "SBIN.NS", "TATASTEEL.NS", "ITC.NS"
 ]
 
-# Button dabane par yeh chalega
 if st.button("Scan Now 🚀"):
     with st.spinner("Scanning markets for Smart Money footprints... Please wait."):
         found_stocks = []
         
         for stock in stocks:
             try:
+                # Data download
                 data = yf.download(stock, period="120d", progress=False)
+                
+                # Agar yfinance naya version MultiIndex column deta hai, toh usko theek karna
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
+
                 if len(data) < 90:
                     continue
                     
+                # Calculations
                 data['90D_Low'] = data['Low'].rolling(window=90).min()
                 data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
-                data['RSI'] = ta.rsi(data['Close'], length=14)
+                data['RSI'] = compute_rsi(data['Close'], 14)
                 
                 latest = data.iloc[-1]
                 
-                current_close = float(latest['Close'].iloc[0]) if isinstance(latest['Close'], pd.Series) else float(latest['Close'])
-                support_level = float(latest['90D_Low'].iloc[0]) if isinstance(latest['90D_Low'], pd.Series) else float(latest['90D_Low'])
-                current_vol = float(latest['Volume'].iloc[0]) if isinstance(latest['Volume'], pd.Series) else float(latest['Volume'])
-                avg_vol = float(latest['Avg_Vol_20'].iloc[0]) if isinstance(latest['Avg_Vol_20'], pd.Series) else float(latest['Avg_Vol_20'])
-                current_rsi = float(latest['RSI'].iloc[0]) if isinstance(latest['RSI'], pd.Series) else float(latest['RSI'])
+                # Values ko number mein badalna
+                current_close = float(latest['Close'])
+                support_level = float(latest['90D_Low'])
+                current_vol = float(latest['Volume'])
+                avg_vol = float(latest['Avg_Vol_20'])
+                current_rsi = float(latest['RSI'])
                 
+                # Rules check karna
                 is_near_support = current_close <= (support_level * 1.03)
                 is_high_volume = current_vol >= (avg_vol * 2.5)
                 is_rsi_oversold = current_rsi <= 40
@@ -52,7 +68,7 @@ if st.button("Scan Now 🚀"):
             except Exception as e:
                 pass
         
-        # Result Screen par dikhana
+        # Result Print Karna
         if len(found_stocks) > 0:
             st.success("✅ Smart Money Footprints Found!")
             df = pd.DataFrame(found_stocks)
