@@ -169,3 +169,4 @@ with tab2:
                         st.error("Data nahi mila. Sahi naam type karein.")
                 except Exception as e:
                     st.error("Kuch technical error aaya. Sahi naam check karein.")
+ 
