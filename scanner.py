@@ -11,113 +11,16 @@ def compute_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-# Helper function: Low-Volume Sell-Off & 1R Strategy Logic
-def analyze_low_vol_strategy(data, risk_1r=11878.0):
-    if len(data) < 25:
-        return None
-
-    df = data.copy()
-    df['Avg_Vol_20'] = df['Volume'].rolling(window=20).mean()
-    df['Pct_Change'] = df['Close'].pct_change() * 100.0
-    
-    # 5-Bar Tight Channel (Parallel Lines)
-    df['Channel_High'] = df['High'].rolling(window=5).max()
-    df['Channel_Low'] = df['Low'].rolling(window=5).min()
-    df['Channel_Width'] = ((df['Channel_High'] - df['Channel_Low']) / df['Close']) * 100.0
-
-    # Step 1: High-Volume Momentum Burst in last 12 bars (Circle 1)
-    # Volume > 2x Avg AND Green Candle with > 2.5% move
-    df['Bull_Burst'] = (df['Volume'] > df['Avg_Vol_20'] * 2.0) & (df['Close'] > df['Open']) & (df['Pct_Change'] > 2.5)
-    
-    # Check if a burst happened between 2 and 12 bars ago
-    recent_burst_window = df['Bull_Burst'].iloc[-13:-1]
-    has_recent_burst = bool(recent_burst_window.any())
-    
-    if not has_recent_burst:
-        return None
-
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
-    
-    close_p = float(latest['Close'])
-    open_p = float(latest['Open'])
-    vol = float(latest['Volume'])
-    avg_vol = float(latest['Avg_Vol_20'])
-    
-    if avg_vol <= 0:
-        return None
-
-    vol_ratio = vol / avg_vol
-    highest_12 = float(df['High'].iloc[-13:].max())
-    lowest_12 = float(df['Low'].iloc[-13:].min())
-    
-    # Step 2: Low-Volume Sell-Off / Pullback in Tight Range (Advance Radar)
-    in_pullback = (close_p < highest_12) and (close_p > lowest_12)
-    is_low_vol = vol_ratio <= 0.70  # Volume dried up (< 70% of 20 SMA)
-    
-    # Current 5-day channel or previous 5-day channel width
-    curr_width = float(latest['Channel_Width'])
-    prev_width = float(prev['Channel_Width'])
-    
-    # Condition A: ADVANCE RADAR (Breakout se pehle - Low-Volume Sell-off + Tight Base)
-    is_radar = has_recent_burst and in_pullback and is_low_vol and (curr_width <= 5.5)
-    
-    # Condition B: BREAKOUT TRIGGER (Tight base ke baad Volume Spike ke saath Breakout)
-    # Previous bar was in a tight range & low volume occurred recently, today broke prev Channel High
-    had_low_vol_recently = bool((df['Volume'].iloc[-6:-1] < df['Avg_Vol_20'].iloc[-6:-1] * 0.75).any())
-    prev_channel_high = float(prev['Channel_High'])
-    prev_channel_low = float(prev['Channel_Low'])
-    
-    is_breakout = (
-        has_recent_burst 
-        and had_low_vol_recently 
-        and (prev_width <= 6.0) 
-        and (close_p > prev_channel_high) 
-        and (close_p > open_p) 
-        and (vol_ratio >= 1.2)
-    )
-
-    if not (is_radar or is_breakout):
-        return None
-
-    # 1R Position Sizing Calculation
-    sl_price = prev_channel_low if is_breakout else float(latest['Channel_Low'])
-    trigger_price = prev_channel_high if is_breakout else float(latest['Channel_High'])
-    
-    # Minimum 0.5% Stop-Loss distance safeguard
-    risk_per_share = max(close_p - sl_price, close_p * 0.005)
-    base_qty = int(round(risk_1r / risk_per_share))
-    tracker_qty = base_qty + 1  # +1 Tracker share (1001 / 2002 pattern)
-    capital_req = tracker_qty * close_p
-    target_3r = close_p + (risk_per_share * 3.0)
-
-    status = "🟢 BREAKOUT BUY 🚀" if is_breakout else "🟡 RADAR (Low-Vol Pullback)"
-
-    return {
-        "Status": status,
-        "Current Price": round(close_p, 2),
-        "Breakout Trigger": round(trigger_price, 2),
-        "Stop-Loss (SL)": round(sl_price, 2),
-        "Vol Ratio": f"{round(vol_ratio, 2)}x",
-        "Buy Qty (+1 Tracker)": tracker_qty,
-        "Capital Req (₹)": round(capital_req, 0),
-        "Target (3R)": round(target_3r, 2)
-    }
-
 # Website ki Setting (Poori tarah se Stealth)
 st.set_page_config(page_title="Smart Money", page_icon="🎯", layout="wide")
 st.title("🎯 Smart Money")
 
-# 3 Tabs create kiye (Tab 3 = New Low-Volume Sell-Off & 1R Strategy)
-tab1, tab2, tab3 = st.tabs([
-    "List Scan (RSI < 35)", 
-    "Manual Check", 
-    "🔥 Low-Vol 1R Strategy (Advance Radar)"
-])
+# 2 Tabs create kiye (Original Structure)
+tab1, tab2 = st.tabs(["List Scan", "Manual Check"])
 
-# ---------------- TAB 1: AUTO SCANNER (Last 5 Days) ----------------
+# ---------------- TAB 1: AUTO SCANNER (Old + Latest Strategy in Separate Column) ----------------
 with tab1:
-    if st.button("Run Scan 🚀", key="btn_tab1"):
+    if st.button("Run Scan 🚀"):
         file_path = "Trading_Symbols_Chartink.txt"
         stocks = []
         
@@ -129,7 +32,8 @@ with tab1:
 
         if stocks:
             with st.spinner("Processing list... please wait."):
-                results = []
+                results = []              # Old Strategy List
+                latest_strat_results = [] # New Strategy List (Alag Column ke liye)
                 progress_bar = st.progress(0)
                 
                 for i, stock in enumerate(stocks):
@@ -142,14 +46,20 @@ with tab1:
                             
                         if len(data) >= 90:
                             data['RSI'] = compute_rsi(data['Close'], 14)
+                            data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                             
+                            symbol_clean = stock.replace(".NS", "")
+                            tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{symbol_clean}"
+                            current_close = float(data['Close'].iloc[-1])
+                            
+                            # ==========================================================
+                            # 1. OLD STRATEGY (Bilkul Original Logic - Untouched)
+                            # ==========================================================
                             latest_rsi = float(data['RSI'].iloc[-1])
                             prev_rsi = float(data['RSI'].iloc[-2])
                             
                             # Filter 1: Kal RSI 35 ke upar tha, aur aaj 35 ya usse niche aaya hai (Fresh Cross)
                             if prev_rsi > 35 and latest_rsi <= 35:
-                                data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
-                                
                                 last_5_days = data.tail(5)
                                 accumulation_found = False
                                 entry_date = ""
@@ -172,10 +82,6 @@ with tab1:
                                         break
                                 
                                 if accumulation_found:
-                                    symbol_clean = stock.replace(".NS", "")
-                                    tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{symbol_clean}"
-                                    current_close = float(data['Close'].iloc[-1])
-                                    
                                     results.append({
                                         "Stock": symbol_clean,
                                         "Entry Date": entry_date,
@@ -183,31 +89,115 @@ with tab1:
                                         "RSI": round(latest_rsi, 2),
                                         "Open in TradingView": tv_link
                                     })
-                    except Exception:
+
+                            # ==========================================================
+                            # 2. LATEST STRATEGY (High-Vol Burst + Low-Vol Sell-Off Entry)
+                            # ==========================================================
+                            data['Pct_Change'] = data['Close'].pct_change() * 100.0
+                            data['Channel_High'] = data['High'].rolling(window=5).max()
+                            data['Channel_Low'] = data['Low'].rolling(window=5).min()
+                            data['Channel_Width'] = ((data['Channel_High'] - data['Channel_Low']) / data['Close']) * 100.0
+                            
+                            # Step 1: Recent High-Volume Momentum Burst (Pichle 15 din mein bada volume move)
+                            data['Bull_Burst'] = (
+                                (data['Volume'] > data['Avg_Vol_20'] * 1.8) & 
+                                (data['Close'] > data['Open']) & 
+                                (data['Pct_Change'] > 2.5)
+                            )
+                            has_recent_burst = bool(data['Bull_Burst'].iloc[-15:-1].any())
+                            
+                            # Step 2: Low-Volume Sell-Off in recent days (Girawat mein volume sookhna)
+                            data['Low_Vol_Drop'] = (
+                                (data['Close'] < data['Open']) & 
+                                (data['Volume'] < data['Avg_Vol_20'] * 0.75)
+                            )
+                            has_low_vol_selloff = bool(data['Low_Vol_Drop'].iloc[-8:-1].any())
+                            
+                            # Step 3: Entry Trigger in Last 3 Days (Tight Base Breakout ya Reversal Entry)
+                            if has_recent_burst and has_low_vol_selloff:
+                                recent_3 = data.tail(3)
+                                strat_entry_found = False
+                                strat_entry_date = ""
+                                strat_signal = ""
+                                
+                                for idx in range(-3, 0):
+                                    row = data.iloc[idx]
+                                    prev_row = data.iloc[idx - 1]
+                                    
+                                    c_close = float(row['Close'])
+                                    c_open = float(row['Open'])
+                                    c_vol = float(row['Volume'])
+                                    c_avg_vol = float(row['Avg_Vol_20'])
+                                    prev_ch_high = float(prev_row['Channel_High'])
+                                    prev_width = float(prev_row['Channel_Width'])
+                                    
+                                    # Entry 1: Tight Channel Breakout with Volume
+                                    if c_close > prev_ch_high and c_close > c_open and c_vol >= (c_avg_vol * 1.1) and prev_width <= 6.5:
+                                        strat_entry_found = True
+                                        strat_entry_date = data.index[idx].strftime("%d %b %Y")
+                                        strat_signal = "Breakout Entry 🚀"
+                                    # Entry 2: Low-Volume Pullback Reversal (TightSL Entry)
+                                    elif c_close > c_open and c_close > float(prev_row['High']) and float(prev_row['Volume']) < (c_avg_vol * 0.70):
+                                        strat_entry_found = True
+                                        strat_entry_date = data.index[idx].strftime("%d %b %Y")
+                                        strat_signal = "Pullback Entry 🎯"
+                                
+                                if strat_entry_found:
+                                    latest_strat_results.append({
+                                        "Stock": symbol_clean,
+                                        "Entry Date": strat_entry_date,
+                                        "Current Price": round(current_close, 2),
+                                        "Signal": strat_signal,
+                                        "Open in TradingView": tv_link
+                                    })
+
+                    except Exception as e:
                         pass
                 
                 progress_bar.empty()
 
-                if len(results) > 0:
-                    df = pd.DataFrame(results)
-                    st.dataframe(
-                        df,
-                        column_config={
-                            "Open in TradingView": st.column_config.LinkColumn(
-                                "Open in TradingView", display_text="View Chart 📈"
-                            )
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                else:
-                    st.info("Koi fresh RSI < 35 breakdown aur recent accumulation nahi mili.")
+                # Screen par 2 Alag Columns: Left = Old Strategy, Right = Latest Strategy
+                col1, col2 = st.columns(2)
 
-# ---------------- TAB 2: MANUAL CHECK (Last 5 Days + 1R Check) ----------------
+                with col1:
+                    st.subheader("📌 Old Strategy (RSI < 35)")
+                    if len(results) > 0:
+                        df = pd.DataFrame(results)
+                        st.dataframe(
+                            df,
+                            column_config={
+                                "Open in TradingView": st.column_config.LinkColumn(
+                                    "Open in TradingView", display_text="View Chart 📈"
+                                )
+                            },
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.info("Koi fresh RSI < 35 breakdown aur recent accumulation nahi mili.")
+
+                with col2:
+                    st.subheader("🔥 Latest Strategy (Low-Vol Entry)")
+                    if len(latest_strat_results) > 0:
+                        df_new = pd.DataFrame(latest_strat_results)
+                        st.dataframe(
+                            df_new,
+                            column_config={
+                                "Open in TradingView": st.column_config.LinkColumn(
+                                    "Open in TradingView", display_text="View Chart 📈"
+                                )
+                            },
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.info("Abhi latest strategy mein koi fresh entry nahi mili.")
+
+# ---------------- TAB 2: MANUAL CHECK (Last 5 Days - Bilkul Original) ----------------
 with tab2:
     user_input = st.text_input("Stock Name (e.g. INFY, HDFCBANK)", "")
     
-    if st.button("Check Stock 🕵️‍♂️", key="btn_tab2"):
+    if st.button("Check Stock 🕵️‍♂️"):
         if user_input.strip() == "":
             st.warning("Pehle kisi stock ka naam likhein.")
         else:
@@ -217,11 +207,11 @@ with tab2:
                     if not stock_name.endswith(".NS"):
                         stock_name += ".NS"
                         
-                    data = yf.download(stock_name, period="60d", progress=False)
+                    data = yf.download(stock_name, period="30d", progress=False)
                     if isinstance(data.columns, pd.MultiIndex):
                         data.columns = data.columns.get_level_values(0)
                         
-                    if len(data) >= 25:
+                    if len(data) >= 20:
                         data['Avg_Vol_20'] = data['Volume'].rolling(window=20).mean()
                         
                         last_5_days = data.tail(5)
@@ -247,15 +237,13 @@ with tab2:
                                 setup = "Absorption (Stealth) 🟢"
                             elif is_green and vol_spike >= 1.5:
                                 setup = "Aggressive Buy 🚀"
-                            elif not is_green and vol_spike <= 0.65:
-                                setup = "Low-Volume Sell-Off (Weak Drop) 🟡"
                                 
                             if setup != "":
                                 activity.append({
                                     "Date": date.strftime("%d %b %Y"),
                                     "Setup Type": setup,
                                     "Closing Price": round(close_p, 2),
-                                    "Volume Spike": f"{round(vol_spike, 2)}x"
+                                    "Volume Spike": f"{round(vol_spike, 1)}x"
                                 })
                                 
                         if len(activity) > 0:
@@ -263,95 +251,7 @@ with tab2:
                             st.dataframe(pd.DataFrame(activity), use_container_width=True, hide_index=True)
                         else:
                             st.info("Pichle 5 dino mein koi special activity nahi mili.")
-                            
-                        # Show 1R Strategy Status for this stock as well
-                        strat_res = analyze_low_vol_strategy(data)
-                        if strat_res:
-                            st.subheader("🎯 Low-Vol 1R Strategy Match!")
-                            st.json(strat_res)
                     else:
                         st.error("Data nahi mila. Sahi naam type karein.")
-                except Exception:
+                except Exception as e:
                     st.error("Kuch technical error aaya. Sahi naam check karein.")
-
-# ---------------- TAB 3: LOW-VOLUME SELL-OFF & 1R STRATEGY ----------------
-with tab3:
-    st.markdown("### 🎯 Low-Volume Sell-Off & Tight Base Scanner (1R System)")
-    st.caption(
-        "Yeh scanner pehle High-Volume Momentum Burst dhoondhta hai, aur phir un stocks ko filter karta hai "
-        "jo Low-Volume Sell-Off (pullback) ya Tight Breakout zone mein hain."
-    )
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        risk_1r_input = st.number_input("Fixed Risk Per Trade (1R in ₹)", value=11878.0, step=500.0)
-    with col2:
-        timeframe_choice = st.selectbox("Select Timeframe", ["1d (Daily Chart)", "1h (Hourly Chart)"])
-        
-    if st.button("Scan Low-Vol Strategy 🔥", key="btn_tab3"):
-        file_path = "Trading_Symbols_Chartink.txt"
-        stocks = []
-        
-        if os.path.exists(file_path):
-            with open(file_path, "r") as f:
-                stocks = [line.strip() + ".NS" for line in f.readlines() if line.strip()]
-        else:
-            st.error("Trading_Symbols_Chartink.txt file nahi mili.")
-
-        if stocks:
-            with st.spinner("Scanning stocks for High-Vol Burst + Low-Vol Sell-Off..."):
-                strat_results = []
-                progress_bar = st.progress(0)
-                
-                is_hourly = timeframe_choice.startswith("1h")
-                dl_period = "30d" if is_hourly else "60d"
-                dl_interval = "1h" if is_hourly else "1d"
-                
-                for i, stock in enumerate(stocks):
-                    progress_bar.progress((i + 1) / len(stocks))
-                    
-                    try:
-                        data = yf.download(stock, period=dl_period, interval=dl_interval, progress=False)
-                        if isinstance(data.columns, pd.MultiIndex):
-                            data.columns = data.columns.get_level_values(0)
-                            
-                        res = analyze_low_vol_strategy(data, risk_1r=risk_1r_input)
-                        if res is not None:
-                            symbol_clean = stock.replace(".NS", "")
-                            tv_link = f"https://in.tradingview.com/chart/?symbol=NSE:{symbol_clean}"
-                            
-                            strat_results.append({
-                                "Stock": symbol_clean,
-                                "Status": res["Status"],
-                                "Current Price": res["Current Price"],
-                                "Breakout Trigger": res["Breakout Trigger"],
-                                "Stop-Loss (SL)": res["Stop-Loss (SL)"],
-                                "Vol Ratio": res["Vol Ratio"],
-                                "Buy Qty (+1 Tracker)": res["Buy Qty (+1 Tracker)"],
-                                "Capital Req (₹)": res["Capital Req (₹)"],
-                                "Target (3R)": res["Target (3R)"],
-                                "Open in TradingView": tv_link
-                            })
-                    except Exception:
-                        pass
-                        
-                progress_bar.empty()
-                
-                if len(strat_results) > 0:
-                    df_strat = pd.DataFrame(strat_results)
-                    # Sort so BREAKOUT BUY comes on top, followed by RADAR
-                    df_strat = df_strat.sort_values(by="Status", ascending=True)
-                    
-                    st.success(f"Total {len(strat_results)} stocks mile jo setup mein hain!")
-                    st.dataframe(
-                        df_strat,
-                        column_config={
-                            "Open in TradingView": st.column_config.LinkColumn(
-                                "Open in TradingView", display_text="View Chart 📈"
-                            )
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                else:
-                    st.info("Abhi list mein koi stock Low-Volume Sell-Off ya Tight Breakout zone mein nahi mila.")
